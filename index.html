@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NutriDesi</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#fbf8f1;--card:#fff;--tx:#1f2a22;--mu:#6b756d;--ac:#2f7d4f;--ac2:#e8f3ec;--bd:#e5e0d3;--wa:#c2410c}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141a16;--card:#1d2620;--tx:#eef3ee;--mu:#9aa89d;--ac:#5cc488;--ac2:#243a2d;--bd:#2c3a30;--wa:#fb923c}}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding-bottom:70px}
+main{max-width:640px;margin:0 auto;padding:14px}
+h1{font-size:20px;margin:0 0 2px}h2{font-size:16px;margin:0 0 8px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
+.mu{color:var(--mu);font-size:13px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.sp{justify-content:space-between}
+input,select,button,textarea{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:9px 10px;max-width:100%}
+input,select{width:100%}.half{width:calc(50% - 4px)}
+button{background:var(--ac);color:#fff;border:0;cursor:pointer;font-weight:600}button.g{background:var(--ac2);color:var(--ac)}button.x{background:none;color:var(--mu);padding:4px 8px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--card);border-top:1px solid var(--bd);padding-bottom:env(safe-area-inset-bottom,0px)}
+nav button{flex:1;background:none;color:var(--mu);border-radius:0;padding:12px 2px;font-size:12px}nav button.on{color:var(--ac)}
+.bar{height:10px;background:var(--ac2);border-radius:6px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ac)}
+.big{font-size:28px;font-weight:700}.pill{background:var(--ac2);color:var(--ac);border-radius:20px;padding:2px 10px;font-size:12px;font-weight:600;display:inline-block;margin:2px}
+.it{border-top:1px solid var(--bd);padding:8px 0}.it:first-child{border-top:0}
+#toast{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);background:var(--ac);color:#fff;padding:10px 16px;border-radius:12px;display:none;z-index:9;max-width:90%}
+.me{background:var(--ac2)}
+</style></head><body>
+<div id="toast"></div><main id="app"><div class="card">Loading…</div></main>
+<nav id="nav"></nav>
+<script>
+// Starter South Indian values per serving: APPROXIMATE, to be verified against IFCT 2017 and edited in the Foods tab.
+const BASE=[
+["Plain dosa","1 medium",130,3,22,3,"rice, urad dal, oil"],["Masala dosa","1 medium",250,5,36,9,"rice, urad dal, potato, onion, oil"],
+["Idli","1 piece",40,2,8,0.2,"rice, urad dal"],["Medu vada","1 piece",150,5,14,8,"urad dal, onion, curry leaves, oil"],
+["Sambar","1 katori",80,4,12,2,"toor dal, vegetables, tamarind, spices"],["Coconut chutney","2 tbsp",60,1,3,5,"coconut, green chilli, roasted gram"],
+["Rasam","1 katori",40,2,6,1,"tomato, tamarind, pepper, cumin"],["Cooked rice","1 katori",195,4,43,0.4,"rice"],
+["Ragi mudde","1 ball",210,4,45,1,"ragi flour"],["Bisi bele bath","1 plate",320,9,50,9,"rice, toor dal, vegetables, ghee, spice mix"],
+["Curd rice","1 bowl",250,7,38,7,"rice, curd, tempering"],["Lemon rice","1 plate",280,5,48,8,"rice, lemon, peanuts, oil"],
+["Ven pongal","1 plate",300,8,40,12,"rice, moong dal, ghee, pepper"],["Upma","1 bowl",230,5,35,8,"rava, onion, oil, vegetables"],
+["Poori","1 piece",120,2,15,6,"wheat flour, oil"],["Chicken biryani","1 plate",450,22,55,15,"rice, chicken, spices, oil"],
+["Filter coffee with milk and sugar","1 cup",90,3,12,3,"coffee, milk, sugar"]
+].map(a=>({id:a[0].toLowerCase().replace(/\W+/g,"-"),n:a[0],u:a[1],k:a[2],p:a[3],c:a[4],f:a[5],i:a[6]}));
+const $=s=>document.querySelector(s),esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const dstr=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"),today=()=>dstr(new Date());
+const S={tab:"today",prof:null,day:{meals:[],water:0,steps:0,sleep:0,weight:null},days:{},foods:BASE.slice(),board:[],msgs:[],scan:null,busy:false,owner:false,names:{}};
+let db,user,sample,uid,col,canScan=false,unsubs=[];
+const toast=m=>{const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display="none",4000)};
+const tot=d=>(d.meals||[]).reduce((a,m)=>({k:a.k+m.k,p:a.p+m.p,c:a.c+m.c,f:a.f+m.f}),{k:0,p:0,c:0,f:0});
+const target=p=>{const b=10*p.w+6.25*p.h-5*p.a+(p.sex=="m"?5:-161),t=b*p.act;return Math.round(p.goal=="lose"?Math.max(t-500,p.sex=="m"?1500:1200):t)};
+const dayPts=(d,t)=>{const k=tot(d).k;return((d.meals||[]).length&&k<=t*1.05?2:0)+(d.water>=2000?1:0)+(d.steps>=6000?1:0)+(d.sleep>=7?1:0)};
+function stats(){const p=S.prof,t=target(p),ds=Object.keys(S.days).sort();let pts=0,streak=0,hyd=0,logged=0,w=p.w;
+ ds.forEach(k=>{const d=S.days[k];pts+=dayPts(d,t);if(d.water>=2000)hyd++;if((d.meals||[]).length)logged++;if(d.weight)w=d.weight});
+ for(let i=0;i<60;i++){const d=new Date();d.setDate(d.getDate()-i);const x=S.days[dstr(d)];if(x&&(x.meals||[]).length)streak++;else if(i>0)break;else continue}
+ const span=Math.abs(p.w-p.tw)||1,pct=p.goal=="lose"?Math.max(0,Math.min(100,Math.round((p.w-w)/span*100))):Math.max(0,100-Math.round(Math.abs(w-p.tw)/span*100));
+ return{t,pts,streak,hyd,logged,w,pct,perks:Math.floor(pts/30)}}
+async function save(){const p=S.prof;await col.doc("d"+today()).set(S.day);S.days[today()]=S.day;
+ if(p.group){const s=stats();await db.collection("board").doc(uid).set({g:p.group,n:p.name,pts:s.pts,pct:s.pct,st:s.streak,t:Date.now()})}render()}
+const nameOf=id=>id==uid?"You":(S.names[id]||"Member");
+// ---------- views ----------
+function vOnboard(){return`<div class="card"><h1>Welcome to NutriDesi</h1><p class="mu">Set up your goal. Targets are estimates from a standard formula, not medical advice.</p>
+<div class="row"><input id="o_n" placeholder="Your name"><select id="o_s" class="half"><option value="m">Male</option><option value="f">Female</option></select><input id="o_a" class="half" type="number" placeholder="Age">
+<input id="o_h" class="half" type="number" placeholder="Height (cm)"><input id="o_w" class="half" type="number" placeholder="Weight (kg)"><input id="o_t" class="half" type="number" placeholder="Target weight (kg)">
+<select id="o_c" class="half"><option value="1.2">Mostly sitting</option><option value="1.375" selected>Light activity</option><option value="1.55">Moderate activity</option><option value="1.725">Very active</option></select>
+<select id="o_g"><option value="lose">Lose weight</option><option value="keep">Maintain weight</option></select><button id="o_go">Start</button></div></div>`}
+function vToday(){const p=S.prof,s=stats(),T=tot(S.day),left=s.t-T.k;
+ const mealRows=(S.day.meals||[]).map((m,i)=>S.edit===i?editForm(m,i):`<div class="it row sp"><div><b>${esc(m.n)}</b> <span class="mu">${esc(m.type)} · ${m.q}× ${esc(m.u)}</span><div class="mu">${Math.round(m.k)} kcal · P ${Math.round(m.p)} C ${Math.round(m.c)} F ${Math.round(m.f)}${m.i?" · "+esc(m.i):""}</div></div><div class="row" style="flex-wrap:nowrap"><button class="x" data-edit="${i}" title="Edit">✎</button><button class="x" data-del="${i}" title="Delete">✕</button></div></div>`).join("")||'<p class="mu">Nothing logged yet. Use Scan to add your first meal.</p>';
+ return`<div class="card"><div class="row sp"><div><h1>Hi ${esc(p.name)}</h1><div class="mu">Goal: ${p.goal=="lose"?"lose weight":"maintain"} · target ${p.tw} kg</div></div><div class="pill">🔥 ${s.streak}-day streak</div></div></div>
+<div class="card"><div class="row sp"><div><div class="big">${Math.round(T.k)}</div><div class="mu">of ${s.t} kcal</div></div><div style="text-align:right"><div class="big" style="color:${left<0?"var(--wa)":"var(--ac)"}">${Math.abs(Math.round(left))}</div><div class="mu">${left<0?"over":"left"}</div></div></div>
+<div class="bar" style="margin:8px 0"><i style="width:${Math.min(100,T.k/s.t*100)}%"></i></div><div class="mu">Protein ${Math.round(T.p)}g · Carbs ${Math.round(T.c)}g · Fat ${Math.round(T.f)}g</div></div>
+<div class="card"><div class="row sp"><h2>Goal progress</h2><b>${s.pct}%</b></div><div class="bar"><i style="width:${s.pct}%"></i></div><div class="mu" style="margin-top:6px">Now ${s.w} kg · started ${p.w} kg · target ${p.tw} kg</div></div>
+<div class="card"><h2>Today’s meals</h2>${mealRows}</div>${badges(s)}`}
+function badges(s){const b=[];if(s.logged>=1)b.push("🥣 First log");if(s.streak>=3)b.push("🔥 3-day streak");if(s.streak>=7)b.push("🏅 7-day streak");if(s.hyd>=5)b.push("💧 Hydration hero");if(s.pts>=30)b.push("🎁 Cheat-day earned");
+ return`<div class="card"><h2>Badges and perks</h2>${b.map(x=>`<span class="pill">${x}</span>`).join("")||'<span class="mu">Log meals, water, steps and sleep to earn badges.</span>'}<div class="mu" style="margin-top:6px">${s.pts} points · ${s.perks} cheat-day perk(s) earned (1 per 30 points)</div></div>`}
+function vScan(){const sc=S.scan;let h=`<div class="card"><h2>Scan your plate</h2><p class="mu">Take or upload a photo of a dish or bowl. AI predicts the food, portion, calories and ingredients. Please confirm or correct before saving.</p>`;
+ h+=canScan?`<input id="f_img" type="file" accept="image/*" capture="environment">`:`<p class="mu">Photo analysis isn’t available in this view, so use manual add below.</p>`;
+ if(S.busy)h+=`<p>Analysing photo…</p>`;h+="</div>";
+ if(sc){h+=`<div class="card"><h2>Predicted</h2><select id="m_t">${["Breakfast","Lunch","Snack","Dinner"].map(x=>`<option ${x==mealType()?"selected":""}>${x}</option>`).join("")}</select>`+sc.map((x,i)=>`<div class="it"><div class="row"><input data-sn="${i}" value="${esc(x.n)}" style="flex:2"><input data-sq="${i}" type="number" step="0.5" value="${x.q}" style="flex:1"></div>
+<div class="mu">${esc(x.u)} · ${Math.round(x.k*x.q)} kcal · P ${Math.round(x.p*x.q)} C ${Math.round(x.c*x.q)} F ${Math.round(x.f*x.q)} · confidence ${esc(x.conf||"?")}</div><div class="mu">Ingredients: ${esc(x.i)}</div></div>`).join("")+`<div class="row" style="margin-top:8px"><button id="sc_ok">Add to today</button><button class="g" id="sc_no">Discard</button></div></div>`}
+ h+=`<div class="card"><h2>Add manually</h2><div class="row"><select id="mn_f" style="flex:2">${S.foods.map((f,i)=>`<option value="${i}">${esc(f.n)} (${esc(f.u)})</option>`).join("")}</select><input id="mn_q" type="number" step="0.5" value="1" style="flex:1"><button id="mn_ok">Add</button></div></div>`;return h}
+function editForm(m,i){return`<div class="it me" style="padding:8px;border-radius:10px"><div class="row"><input id="e_n" value="${esc(m.n)}" style="flex:2"><select id="e_t" style="flex:1">${["Breakfast","Lunch","Snack","Dinner"].map(x=>`<option ${x==m.type?"selected":""}>${x}</option>`).join("")}</select></div><div class="row" style="margin-top:6px"><label class="mu half">Servings (${esc(m.u)})<input id="e_q" type="number" step="0.25" value="${m.q}"></label><label class="mu half">Calories<input id="e_k" type="number" value="${Math.round(m.k)}"></label></div><div class="mu" style="margin-top:4px">Change servings to rescale calories and macros, or type your own calories.</div><div class="row" style="margin-top:6px"><button id="e_ok">Save</button><button class="g" id="e_no">Cancel</button></div></div>`}
+const mealType=()=>{const h=new Date().getHours();return h<11?"Breakfast":h<16?"Lunch":h<19?"Snack":"Dinner"};
+function vTrack(){const d=S.day,r=S.prof.rem||{};return`<div class="card"><h2>Water <span class="mu">${d.water} / 2500 ml</span></h2><div class="bar"><i style="width:${Math.min(100,d.water/25)}%"></i></div><div class="row" style="margin-top:8px"><button data-w="250">+250 ml</button><button class="g" data-w="-250">−250</button></div></div>
+<div class="card"><h2>Steps, sleep, weight</h2><div class="row"><input id="t_st" class="half" type="number" placeholder="Steps" value="${d.steps||""}"><input id="t_sl" class="half" type="number" step="0.5" placeholder="Sleep (hours)" value="${d.sleep||""}"><input id="t_wt" class="half" type="number" step="0.1" placeholder="Weight (kg)" value="${d.weight||""}"><button id="t_ok" class="half">Save</button></div></div>
+<div class="card"><h2>Reminders</h2><p class="mu">App notifications work while NutriDesi is open in your browser. Phone push comes with the mobile app.</p>
+<label class="row"><input type="checkbox" id="r_m" style="width:auto" ${r.m?"checked":""}> Meal logging (8:30, 13:00, 20:00)</label><label class="row"><input type="checkbox" id="r_w" style="width:auto" ${r.w?"checked":""}> Water (every 2 hours, 10:00–20:00)</label></div>`}
+function vGroup(){const p=S.prof;if(!p.group)return`<div class="card"><h2>Groups (invite only)</h2><p class="mu">Create a group and share its code, or join with a code.</p><div class="row"><input id="g_n" placeholder="Group name" style="flex:2"><button id="g_new">Create</button></div><div class="row" style="margin-top:8px"><input id="g_c" placeholder="Invite code" style="flex:2"><button class="g" id="g_join">Join</button></div></div>`;
+ const b=S.board.slice().sort((a,c)=>c.pct-a.pct||c.pts-a.pts);
+ return`<div class="card"><div class="row sp"><h2>${esc(p.gname||"Group")}</h2><span class="pill">Code: ${esc(p.group)}</span></div><div class="mu">Ranked by progress towards each person’s own goal, not raw weight lost. Top of the board earns perks.</div></div>
+<div class="card"><h2>Leaderboard</h2>${b.map((x,i)=>`<div class="it row sp ${x.id==uid?"me":""}"><div>${["🥇","🥈","🥉"][i]||i+1+"."} <b>${esc(x.n)}</b><div class="mu">🔥 ${x.st}-day streak · ${x.pts} pts</div></div><b>${x.pct}%</b></div>`).join("")||'<p class="mu">No members yet.</p>'}<button class="x" id="g_leave">Leave group</button></div>
+<div class="card"><h2>Chat</h2><div style="max-height:240px;overflow:auto">${S.msgs.map(m=>`<div class="it"><b>${esc(m.n)}</b> <span class="mu">${new Date(m.t).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</span><div>${esc(m.x)}</div></div>`).join("")||'<p class="mu">Say hi and cheer someone on.</p>'}</div><div class="row" style="margin-top:8px"><input id="c_x" placeholder="Write a message" style="flex:3"><button id="c_go">Send</button></div></div>`}
+function vFoods(){return`<div class="card"><h2>Add or update a food (admin)</h2><div class="row"><input id="a_n" placeholder="Dish name"><input id="a_u" class="half" placeholder="Serving (e.g. 1 katori)"><input id="a_k" class="half" type="number" placeholder="kcal">
+<input id="a_p" class="half" type="number" placeholder="Protein g"><input id="a_c" class="half" type="number" placeholder="Carbs g"><input id="a_f" class="half" type="number" placeholder="Fat g"><input id="a_i" placeholder="Ingredients, comma separated"><button id="a_ok">Save food</button></div></div>
+<div class="card"><h2>Food database (${S.foods.length})</h2>${S.foods.map(f=>`<div class="it"><b>${esc(f.n)}</b> <span class="mu">${esc(f.u)} · ${f.k} kcal · P${f.p} C${f.c} F${f.f}</span></div>`).join("")}</div>`}
+const TABS=[["today","🏠","Today"],["scan","📷","Scan"],["track","💧","Track"],["group","🏆","Group"]];
+function render(){if(!S.prof){$("#nav").innerHTML="";$("#app").innerHTML=vOnboard();bindOnboard();return}
+ const tabs=TABS.concat(S.owner?[["foods","🍛","Foods"]]:[]);
+ $("#nav").innerHTML=tabs.map(t=>`<button data-tab="${t[0]}" class="${S.tab==t[0]?"on":""}">${t[1]}<br>${t[2]}</button>`).join("");
+ const keep=document.activeElement&&document.activeElement.id;$("#app").innerHTML=({today:vToday,scan:vScan,track:vTrack,group:vGroup,foods:vFoods})[S.tab]();bind();if(keep&&$("#"+keep)&&/^(c_x)$/.test(keep))$("#"+keep).focus()}
+// ---------- actions ----------
+function bindOnboard(){$("#o_go").onclick=async()=>{const v=i=>$("#o_"+i).value,n=x=>parseFloat(x);
+ const p={name:v("n").trim()||"Me",sex:v("s"),a:n(v("a")),h:n(v("h")),w:n(v("w")),tw:n(v("t")),act:n(v("c")),goal:v("g"),rem:{m:true,w:true}};
+ if(![p.a,p.h,p.w,p.tw].every(x=>x>0))return toast("Please fill in age, height, weight and target weight.");
+ S.prof=p;await col.doc("p").set(p);render()}}
+function addMeal(x,type,ai){S.day.meals=(S.day.meals||[]).concat([{n:x.n,u:x.u,q:x.q,k:x.k*x.q,p:x.p*x.q,c:x.c*x.q,f:x.f*x.q,i:x.i,type,ai:!!ai}])}
+function bind(){const q=(s,f)=>{const e=$(s);if(e)e.onclick=f},p=S.prof;
+ document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{S.tab=b.dataset.tab;render()});
+ document.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{S.edit=null;S.day.meals.splice(+b.dataset.del,1);save()});
+ document.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>{S.edit=+b.dataset.edit;render()});
+ q("#e_no",()=>{S.edit=null;render()});
+ q("#e_ok",async()=>{const m=S.day.meals[S.edit],nq=Math.max(0.25,parseFloat($("#e_q").value)||m.q),nk=parseFloat($("#e_k").value),kc=Math.round(m.k)!==Math.round(nk)&&nk>=0,r=kc?(m.k>0?nk/m.k:1):nq/m.q;
+  m.p*=r;m.c*=r;m.f*=r;m.k=kc?nk:m.k*r;m.q=nq;m.n=$("#e_n").value.trim()||m.n;m.type=$("#e_t").value;S.edit=null;await save();toast("Meal updated")});
+ document.querySelectorAll("[data-w]").forEach(b=>b.onclick=()=>{S.day.water=Math.max(0,S.day.water+ +b.dataset.w);save()});
+ const fi=$("#f_img");if(fi)fi.onchange=()=>scanImg(fi.files[0]);
+ document.querySelectorAll("[data-sn]").forEach(e=>e.onchange=()=>{S.scan[+e.dataset.sn].n=e.value});
+ document.querySelectorAll("[data-sq]").forEach(e=>e.onchange=()=>{S.scan[+e.dataset.sq].q=Math.max(0.25,parseFloat(e.value)||1);render()});
+ q("#sc_no",()=>{S.scan=null;render()});
+ q("#sc_ok",async()=>{const t=$("#m_t").value;for(const x of S.scan){addMeal(x,t,true);if(x.n!==x.orig)db.collection("fix").doc(uid+"_"+Date.now()).set({ai:x.orig,final:x.n,t:Date.now()}).catch(()=>{})}S.scan=null;S.tab="today";await save();toast("Meal added")});
+ q("#mn_ok",async()=>{const f=S.foods[+$("#mn_f").value];addMeal({n:f.n,u:f.u,q:parseFloat($("#mn_q").value)||1,k:f.k,p:f.p,c:f.c,f:f.f,i:f.i},mealType());S.tab="today";await save()});
+ q("#t_ok",async()=>{const n=i=>parseFloat($(i).value)||0;S.day.steps=n("#t_st");S.day.sleep=n("#t_sl");S.day.weight=n("#t_wt")||null;await save();toast("Saved")});
+ const rm=$("#r_m"),rw=$("#r_w");if(rm)rm.onchange=rw.onchange=async()=>{p.rem={m:rm.checked,w:rw.checked};await col.doc("p").set(p);if("Notification"in window&&Notification.permission=="default")Notification.requestPermission()};
+ q("#g_new",async()=>{const n=$("#g_n").value.trim();if(!n)return;const c=Math.random().toString(36).slice(2,7).toUpperCase();await db.collection("groups").doc(c).set({n,by:uid});await joinG(c,n)});
+ q("#g_join",async()=>{const c=$("#g_c").value.trim().toUpperCase(),d=await db.collection("groups").doc(c).get();if(!d.exists)return toast("Code not found");await joinG(c,d.data().n)});
+ q("#g_leave",async()=>{p.group=null;await col.doc("p").set(p);try{await db.collection("board").doc(uid).delete()}catch(e){}subs();render()});
+ q("#c_go",sendMsg);const cx=$("#c_x");if(cx)cx.onkeydown=e=>{if(e.key=="Enter")sendMsg()};
+ q("#a_ok",async()=>{const v=i=>$("#a_"+i).value,n=i=>parseFloat(v(i))||0,name=v("n").trim();if(!name)return;const f={n:name,u:v("u")||"1 serving",k:n("k"),p:n("p"),c:n("c"),f:n("f"),i:v("i")};
+  await db.collection("foods").doc(name.toLowerCase().replace(/\W+/g,"-")).set(f);await loadFoods();toast("Food saved");render()})}
+async function joinG(c,n){S.prof.group=c;S.prof.gname=n;await col.doc("p").set(S.prof);await save();subs();render()}
+async function sendMsg(){const e=$("#c_x"),x=e.value.trim();if(!x)return;e.value="";await db.collection("msgs").doc(uid+"_"+Date.now()).set({g:S.prof.group,u:uid,n:S.prof.name,t:Date.now(),x:x.slice(0,300)})}
+async function shrink(f){const im=await createImageBitmap(f),r=Math.min(1,900/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=im.width*r;c.height=im.height*r;c.getContext("2d").drawImage(im,0,0,c.width,c.height);return new Promise(ok=>c.toBlob(ok,"image/jpeg",.8))}
+async function scanImg(f){if(!f)return;S.busy=true;render();
+ try{const b=await shrink(f),list=S.foods.map(x=>`${x.n} [${x.u}: ${x.k} kcal, P${x.p} C${x.c} F${x.f}; ${x.i}]`).join("; ");
+  const r=await sample.json(`You identify Indian food, especially South Indian (Bengaluru home and restaurant style), from a photo of a plate or bowl. Reference foods with per-serving values: ${list}. For each distinct food visible, give the best matching name (use a reference name when it fits), the visible quantity as a number of servings in that reference unit (q), and PER-ONE-SERVING values. If not in the reference, estimate. Respond ONLY with JSON: {"items":[{"n":"","u":"serving unit","q":1,"k":0,"p":0,"c":0,"f":0,"i":"comma separated likely ingredients","conf":"high|medium|low"}]}. If no food is visible return {"items":[]}.`,{images:[b],cache:false});
+  const it=(r.items||[]).map(x=>({n:String(x.n||"Food"),orig:String(x.n||"Food"),u:String(x.u||"1 serving"),q:+x.q||1,k:+x.k||0,p:+x.p||0,c:+x.c||0,f:+x.f||0,i:String(x.i||""),conf:x.conf}));
+  if(!it.length)toast("No food found. Try a closer photo or add manually.");S.scan=it.length?it:null}
+ catch(e){toast(e&&e.code=="not_granted"?"Photo analysis was not allowed.":"Couldn’t analyse that photo. Try again or add manually.")}
+ S.busy=false;render()}
+// ---------- data ----------
+async function loadFoods(){try{const s=await db.collection("foods").get(),m={};S.foods=BASE.slice();s.docs.forEach(d=>{const f=d.data();f.id=d.id;const i=S.foods.findIndex(x=>x.id==d.id);if(i>=0)S.foods[i]=f;else S.foods.push(f)})}catch(e){}}
+function subs(){unsubs.forEach(f=>f());unsubs=[];const g=S.prof&&S.prof.group;if(!g)return;
+ unsubs.push(db.collection("board").where("g","==",g).onSnapshot(s=>{S.board=s.docs.map(d=>Object.assign({id:d.id},d.data()));if(S.tab=="group")render()},()=>{}));
+ unsubs.push(db.collection("msgs").where("g","==",g).onSnapshot(s=>{S.msgs=s.docs.map(d=>d.data()).sort((a,b)=>a.t-b.t).slice(-30);if(S.tab=="group")render()},()=>{}))}
+function remind(){setInterval(()=>{const r=S.prof&&S.prof.rem;if(!r)return;const d=new Date(),k=d.getHours()*60+d.getMinutes();let m=null;
+ if(r.m&&[510,780,1200].includes(k))m="Time to log your meal. Snap a photo in NutriDesi.";else if(r.w&&k%120==0&&k>=600&&k<=1200)m="Water break! Log a glass in NutriDesi.";
+ if(m){toast(m);try{if(Notification.permission=="granted")new Notification("NutriDesi",{body:m})}catch(e){}}},60000)}
+(async function init(){
+ try{user=await claude.use("user");db=await claude.use("db");sample=await claude.use("sample")}catch(e){}
+ if(!user||!db){$("#app").innerHTML='<div class="card"><h2>Sign in needed</h2><p class="mu">Open this page while signed in to claude.ai so your data can be saved.</p></div>';return}
+ uid=await user.id();S.owner=user.isOwner();col=db.collection("data/users/"+uid);
+ try{if(sample){const l=await sample.limits();canScan=!!(l&&l.images)}}catch(e){}
+ try{const p=await col.doc("p").get();if(p.exists)S.prof=p.data();
+  (await col.get()).docs.forEach(d=>{if(d.id[0]=="d")S.days[d.id.slice(1)]=d.data()});
+  if(S.days[today()])S.day=Object.assign({meals:[]},S.days[today()])}catch(e){}
+ await loadFoods();subs();remind();render()})();
+</script></body></html>
